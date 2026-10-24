@@ -14,8 +14,11 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local LocalPlayer = Players.LocalPlayer
+local LoadedAt = os.clock()
 
 local function ReadGlobal(name)
 	local ok, value = pcall(function()
@@ -2394,7 +2397,7 @@ end
 function Container:Stats(opts)
 	opts = opts or {}
 	local items = opts.Items or opts
-	local count = math.max(#items, 1)
+	local count = math.max(math.min(opts.Columns or #items, #items), 1)
 
 	local card = Create("Frame", {
 		Name = "Stats",
@@ -2424,13 +2427,21 @@ function Container:Stats(opts)
 		Pad(el._titleLabel, 0, 0, 2, 0)
 	end
 
-	local row = Create("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 58),
-		LayoutOrder = 1,
-		Parent = card,
-	})
-	List(row, 8, Enum.FillDirection.Horizontal)
+	local rows = {}
+	local function rowFor(index)
+		local rowIndex = math.floor((index - 1) / count) + 1
+		if not rows[rowIndex] then
+			local row = Create("Frame", {
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 58),
+				LayoutOrder = rowIndex,
+				Parent = card,
+			})
+			List(row, 8, Enum.FillDirection.Horizontal)
+			rows[rowIndex] = row
+		end
+		return rows[rowIndex]
+	end
 
 	local function format(tile, value)
 		if tile.Format then
@@ -2444,7 +2455,7 @@ function Container:Stats(opts)
 			BorderSizePixel = 0,
 			Size = UDim2.new(1 / count, -math.ceil(8 * (count - 1) / count), 1, 0),
 			LayoutOrder = i,
-			Parent = row,
+			Parent = rowFor(i),
 		})
 		Corner(tile, 8)
 		Bind(tile, { BackgroundColor3 = "Field" })
@@ -4920,6 +4931,156 @@ function Window:_changed()
 			self:SaveConfig(type(self.AutoSave) == "string" and self.AutoSave or "autosave")
 		end
 	end)
+end
+
+local function FormatUptime(seconds)
+	seconds = math.floor(seconds)
+	local hours = math.floor(seconds / 3600)
+	local minutes = math.floor(seconds % 3600 / 60)
+	if hours > 0 then
+		return string.format("%dh %02dm", hours, minutes)
+	elseif minutes > 0 then
+		return string.format("%dm %02ds", minutes, seconds % 60)
+	end
+	return seconds .. "s"
+end
+
+local HomeStats = {
+	FPS = {
+		Get = function(state)
+			return state.FPS
+		end,
+	},
+	Ping = {
+		Suffix = " ms",
+		Get = function()
+			return math.floor(LocalPlayer:GetNetworkPing() * 1000 + 0.5)
+		end,
+	},
+	Executor = {
+		Static = true,
+		Get = function()
+			local name = identifyexecutor()
+			return name and tostring(name) or "Unknown"
+		end,
+	},
+	Game = {
+		Static = true,
+		Slow = true,
+		Get = function()
+			local ok, info = pcall(function()
+				return MarketplaceService:GetProductInfo(game.PlaceId)
+			end)
+			if ok and type(info) == "table" and info.Name then
+				return info.Name
+			end
+			return game.Name
+		end,
+	},
+	Time = {
+		Get = function()
+			return os.date("%H:%M")
+		end,
+	},
+	Players = {
+		Get = function()
+			return #Players:GetPlayers() .. "/" .. Players.MaxPlayers
+		end,
+	},
+	Uptime = {
+		Get = function()
+			return FormatUptime(os.clock() - LoadedAt)
+		end,
+	},
+}
+local DefaultHomeStats = { "FPS", "Ping", "Executor", "Game", "Time", "Players", "Uptime" }
+
+function Window:HomeTab(opts)
+	opts = opts or {}
+	local tab = self:Tab({
+		Name = opts.Name or "Home",
+		Icon = opts.Icon,
+		Description = opts.Description or "Overview",
+	})
+
+	local entries = {}
+	for _, stat in ipairs(opts.Stats or DefaultHomeStats) do
+		if type(stat) == "table" then
+			table.insert(entries, {
+				Title = stat.Title or stat.Name or "Stat",
+				Get = stat.Get,
+				Prefix = stat.Prefix,
+				Suffix = stat.Suffix,
+				Static = stat.Static,
+			})
+		elseif HomeStats[stat] then
+			local stock = HomeStats[stat]
+			table.insert(entries, {
+				Title = stat,
+				Get = stock.Get,
+				Suffix = stock.Suffix,
+				Static = stock.Static,
+				Slow = stock.Slow,
+			})
+		end
+	end
+	if #entries == 0 then
+		return tab
+	end
+
+	local state = { FPS = 0 }
+	local function read(entry)
+		if type(entry.Get) ~= "function" then
+			return "-"
+		end
+		local ok, value = pcall(entry.Get, state)
+		if ok and value ~= nil then
+			return value
+		end
+		return "Unknown"
+	end
+
+	local items = {}
+	for i, entry in ipairs(entries) do
+		items[i] = {
+			Title = entry.Title,
+			Value = entry.Slow and "..." or read(entry),
+			Prefix = entry.Prefix,
+			Suffix = entry.Suffix,
+		}
+	end
+	local section = tab:Section({ Title = opts.Title or "System info", Icon = opts.SectionIcon })
+	local stats = section:Stats({ Items = items, Columns = opts.Columns or 2 })
+	tab.Stats = stats
+
+	for i, entry in ipairs(entries) do
+		if entry.Slow then
+			task.spawn(function()
+				stats:Set(i, read(entry))
+			end)
+		end
+	end
+
+	local frames = 0
+	local frameConn = Connect(RunService.RenderStepped, function()
+		frames = frames + 1
+	end)
+	task.spawn(function()
+		local last = os.clock()
+		while tab.Scroll.Parent do
+			task.wait(1)
+			local now = os.clock()
+			state.FPS = math.floor(frames / math.max(now - last, 0.001) + 0.5)
+			frames, last = 0, now
+			for i, entry in ipairs(entries) do
+				if not entry.Static then
+					stats:Set(i, read(entry))
+				end
+			end
+		end
+		frameConn:Disconnect()
+	end)
+	return tab
 end
 
 function Window:SettingsTab(opts)
