@@ -1,3 +1,9 @@
+-- Axivex Library
+-- Socials @blankfelony - Discord | proxylol - Github
+-- Axivex (c) 2026 proxylol. All rights reserved.
+-- Use only by loading from the official URL. No copying, editing or redistribution.
+-- Full license: https://github.com/proxylol/Axivex/blob/main/LICENSE
+
 local Axivex = {
 	Version = "1.0.0",
 	Flags = {},
@@ -2996,6 +3002,121 @@ function Container:Console(opts)
 	return el
 end
 
+function Container:Changelog(entries)
+	entries = entries.Entries or entries
+	local el = Wrap(nil, "Changelog", self)
+	el.Cards = {}
+	for _, entry in ipairs(entries) do
+		local card = Create("Frame", {
+			Name = "Entry",
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = NextOrder(self),
+			Parent = self.Frame,
+		})
+		Corner(card, 8)
+		Stroke(card)
+		Bind(card, { BackgroundColor3 = "Element" })
+		Pad(card, 12, 12, 14, 14)
+		List(card, 6)
+
+		local header = Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 18),
+			LayoutOrder = 1,
+			Parent = card,
+		})
+		local left = Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, entry.Date and -90 or 0, 1, 0),
+			Parent = header,
+		})
+		List(left, 8, Enum.FillDirection.Horizontal, nil, Enum.VerticalAlignment.Center)
+		Label({
+			Text = tostring(entry.Title or ""),
+			Size = UDim2.fromScale(0, 1),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Font = Fonts.SemiBold,
+			TextSize = 14,
+			LayoutOrder = 1,
+			Parent = left,
+		})
+		if entry.Tag then
+			TagPill(left, entry.Tag, false, 2)
+		end
+		if entry.Date then
+			Label({
+				Text = tostring(entry.Date),
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.fromScale(1, 0),
+				Size = UDim2.new(0, 90, 1, 0),
+				XAlign = Enum.TextXAlignment.Right,
+				TextSize = 12,
+				Color = "Muted",
+				Parent = header,
+			})
+		end
+
+		if entry.Changes then
+			for i, change in ipairs(entry.Changes) do
+				local row = Create("Frame", {
+					BackgroundTransparency = 1,
+					Size = UDim2.new(1, 0, 0, 0),
+					AutomaticSize = Enum.AutomaticSize.Y,
+					LayoutOrder = 1 + i,
+					Parent = card,
+				})
+				local dot = Create("Frame", {
+					BorderSizePixel = 0,
+					Position = UDim2.fromOffset(2, 7),
+					Size = UDim2.fromOffset(4, 4),
+					Parent = row,
+				})
+				Round(dot)
+				Bind(dot, { BackgroundColor3 = "Muted" })
+				Label({
+					Text = tostring(change),
+					Position = UDim2.fromOffset(14, 0),
+					Size = UDim2.new(1, -14, 0, 0),
+					AutomaticSize = Enum.AutomaticSize.Y,
+					Wrapped = true,
+					RichText = true,
+					TextSize = 13,
+					YAlign = Enum.TextYAlignment.Top,
+					Color = "SubText",
+					Parent = row,
+				})
+			end
+		elseif entry.Content then
+			Label({
+				Text = tostring(entry.Content),
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Wrapped = true,
+				RichText = true,
+				TextSize = 13,
+				Color = "SubText",
+				LayoutOrder = 2,
+				Parent = card,
+			})
+		end
+		table.insert(el.Cards, card)
+	end
+	el.Card = el.Cards[1]
+	function el:SetVisible(visible)
+		for _, card in ipairs(self.Cards) do
+			card.Visible = visible
+		end
+	end
+	function el:Destroy()
+		for _, card in ipairs(self.Cards) do
+			card:Destroy()
+		end
+	end
+	return el
+end
+
 do
 	local names = {}
 	for name in pairs(Container) do
@@ -4978,8 +5099,8 @@ local HomeStats = {
 		end,
 	},
 	Time = {
-		Get = function()
-			return os.date("%H:%M")
+		Get = function(state)
+			return os.date(state.TimeFormat)
 		end,
 	},
 	Players = {
@@ -4995,13 +5116,155 @@ local HomeStats = {
 }
 local DefaultHomeStats = { "FPS", "Ping", "Executor", "Game", "Time", "Players", "Uptime" }
 
+local function DefaultGreeting()
+	local hour = tonumber(os.date("%H")) or 12
+	if hour < 12 then
+		return "Good morning."
+	elseif hour < 18 then
+		return "Good afternoon."
+	end
+	return "Good evening."
+end
+
+local function LoadAvatar(userId, onLoaded)
+	task.spawn(function()
+		local image
+		if Axivex.Secure then
+			local path = Axivex.Folder .. "/cache/avatar-" .. tostring(userId) .. ".png"
+			local okFile, cached = pcall(isfile, path)
+			if okFile and cached then
+				image = Axivex:CustomAsset(path)
+			else
+				local ok, url = pcall(function()
+					local body = game:HttpGet(
+						"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds="
+							.. tostring(userId)
+							.. "&size=150x150&format=Png&isCircular=false"
+					)
+					return HttpService:JSONDecode(body).data[1].imageUrl
+				end)
+				if ok and type(url) == "string" then
+					image = Axivex:CustomAsset(path, url)
+				end
+			end
+		else
+			local ok, result = pcall(function()
+				return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+			end)
+			if ok then
+				image = result
+			end
+		end
+		if image then
+			onLoaded(image)
+		end
+	end)
+end
+
+local function WelcomeCard(container, opts)
+	local name = LocalPlayer and LocalPlayer.DisplayName or "there"
+	local card = Create("Frame", {
+		Name = "Welcome",
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 60),
+		LayoutOrder = NextOrder(container),
+		Parent = container.Frame,
+	})
+	Corner(card, 8)
+	Stroke(card)
+	Bind(card, { BackgroundColor3 = "Element" })
+
+	local avatar = Create("ImageLabel", {
+		Name = "Avatar",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 12, 0.5, 0),
+		Size = UDim2.fromOffset(36, 36),
+		Parent = card,
+	})
+	Corner(avatar, 8)
+	Bind(avatar, { BackgroundColor3 = "Field" })
+	local initial = Label({
+		Text = name:sub(1, 1):upper(),
+		XAlign = Enum.TextXAlignment.Center,
+		Font = Fonts.Bold,
+		TextSize = 16,
+		Color = "SubText",
+		Parent = avatar,
+	})
+
+	local welcome = Label({
+		Name = "Title",
+		Text = (opts.Welcome or "Hello, ") .. name,
+		Position = UDim2.fromOffset(60, 12),
+		Size = UDim2.new(1, -72, 0, 18),
+		Font = Fonts.Medium,
+		TextSize = 14,
+		Truncate = Enum.TextTruncate.AtEnd,
+		Parent = card,
+	})
+	local greeting = Label({
+		Name = "Greeting",
+		Text = opts.Greeting or DefaultGreeting(),
+		Position = UDim2.fromOffset(60, 31),
+		Size = UDim2.new(1, -72, 0, 16),
+		TextSize = 12,
+		Truncate = Enum.TextTruncate.AtEnd,
+		Color = "SubText",
+		Parent = card,
+	})
+
+	if opts.Avatar ~= false and LocalPlayer then
+		LoadAvatar(LocalPlayer.UserId, function(image)
+			if avatar.Parent then
+				avatar.Image = image
+				initial.Visible = false
+			end
+		end)
+	end
+
+	return {
+		Card = card,
+		Avatar = avatar,
+		SetTitle = function(_, text)
+			welcome.Text = text
+		end,
+		SetGreeting = function(_, text)
+			greeting.Text = text
+		end,
+	}
+end
+
+local function BuildHomePages(tab, opts)
+	for _, pageOpts in ipairs(opts.Pages or {}) do
+		local page = tab:Page({ Name = pageOpts.Name or "Page", Icon = pageOpts.Icon })
+		if pageOpts.Entries then
+			page:Changelog(pageOpts.Entries)
+		end
+		if pageOpts.Content then
+			page:Paragraph({ Title = pageOpts.Title, Content = pageOpts.Content })
+		end
+		if type(pageOpts.Build) == "function" then
+			SafeCall(pageOpts.Build, page, page.Frame)
+		end
+	end
+end
+
 function Window:HomeTab(opts)
 	opts = opts or {}
 	local tab = self:Tab({
 		Name = opts.Name or "Home",
 		Icon = opts.Icon,
-		Description = opts.Description or "Overview",
+		Description = opts.Description or opts.Desc or "Overview",
 	})
+	local main = tab
+	if opts.Pages then
+		main = tab:Page({ Name = opts.DetailsName or "Details", Icon = opts.DetailsIcon })
+		tab.Details = main
+	end
+	if opts.Welcome ~= false then
+		tab.Welcome = WelcomeCard(main, opts)
+	end
 
 	local entries = {}
 	for _, stat in ipairs(opts.Stats or DefaultHomeStats) do
@@ -5025,10 +5288,11 @@ function Window:HomeTab(opts)
 		end
 	end
 	if #entries == 0 then
+		BuildHomePages(tab, opts)
 		return tab
 	end
 
-	local state = { FPS = 0 }
+	local state = { FPS = 0, TimeFormat = opts.TimeFormat or "%H:%M" }
 	local function read(entry)
 		if type(entry.Get) ~= "function" then
 			return "-"
@@ -5049,7 +5313,7 @@ function Window:HomeTab(opts)
 			Suffix = entry.Suffix,
 		}
 	end
-	local section = tab:Section({ Title = opts.Title or "System info", Icon = opts.SectionIcon })
+	local section = main:Section({ Title = opts.SectionName or opts.Title or "System info", Icon = opts.SectionIcon })
 	local stats = section:Stats({ Items = items, Columns = opts.Columns or 2 })
 	tab.Stats = stats
 
@@ -5080,6 +5344,7 @@ function Window:HomeTab(opts)
 		end
 		frameConn:Disconnect()
 	end)
+	BuildHomePages(tab, opts)
 	return tab
 end
 
