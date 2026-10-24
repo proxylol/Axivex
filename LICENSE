@@ -1,0 +1,19 @@
+Axivex License
+
+Copyright (c) 2026 proxylol. All rights reserved.
+
+You may load and use Axivex in your own scripts, free of charge, by loading it
+from the official source:
+https://raw.githubusercontent.com/proxylol/Axivex/refs/heads/main/Axivex.lua
+
+You may not, without written permission from the copyright holder:
+  - copy, re-upload, mirror or redistribute Axivex, in whole or in part;
+  - modify Axivex or distribute modified versions of it;
+  - sell Axivex, or include it in a paid product as anything other than a
+    loaded dependency;
+  - remove or change this notice.
+
+Axivex is provided "as is", without warranty of any kind, and without any
+obligation to provide documentation, support or updates. In no event shall
+the copyright holder be liable for any claim, damages or other liability
+arising from the use of Axivex.
