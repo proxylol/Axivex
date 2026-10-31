@@ -4377,6 +4377,111 @@ function Window:SetVisible(visible)
 			Tween(self._openScale, { Scale = 1 }, 0.35, Enum.EasingStyle.Back)
 		end
 	end
+	for _, panel in ipairs(self._panels or {}) do
+		panel:_fade()
+	end
+end
+
+-- a card docked beside the window. It's parented to the window's root, so it moves, scales and
+-- hides along with it
+function Window:SidePanel(opts)
+	opts = opts or {}
+	local window = self
+	local right = opts.Side ~= "Left"
+	local panel = { Visible = opts.Visible ~= false }
+
+	local frame = Create("Frame", {
+		Name = "SidePanel",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(right and 0 or 1, 0),
+		Position = right and UDim2.new(1, 10, 0, 0) or UDim2.new(0, -10, 0, 0),
+		Size = UDim2.new(0, opts.Width or 220, opts.Height and 0 or 1, opts.Height or 0),
+		Visible = panel.Visible,
+		Parent = window.Root,
+	})
+	local outline = Create("Frame", {
+		Name = "Outline",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Parent = frame,
+	})
+	Corner(outline, 12)
+	local outlineStroke = Stroke(outline)
+	local body = Create("CanvasGroup", {
+		Name = "Body",
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = frame,
+	})
+	Corner(body, 12)
+	Bind(body, { BackgroundColor3 = "Background" })
+
+	local title = Label({
+		Text = opts.Title or "",
+		Position = UDim2.fromOffset(14, 0),
+		Size = UDim2.new(1, -28, 0, 40),
+		Font = Fonts.Bold,
+		TextSize = 14,
+		Truncate = Enum.TextTruncate.AtEnd,
+		Parent = body,
+	})
+	local line = Create("Frame", {
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, 40),
+		Size = UDim2.new(1, 0, 0, 1),
+		Parent = body,
+	})
+	Bind(line, { BackgroundColor3 = "Stroke" })
+	local content = Create("Frame", {
+		Name = "Content",
+		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		Position = UDim2.fromOffset(0, 41),
+		Size = UDim2.new(1, 0, 1, -41),
+		Parent = body,
+	})
+
+	panel.Frame, panel.Content = frame, content
+
+	function panel:_fade()
+		local shown = window.Visible and self.Visible
+		if shown then
+			frame.Visible = true
+		end
+		Tween(body, { GroupTransparency = shown and 0 or 1 }, 0.3)
+		Tween(outlineStroke, { Transparency = shown and 0 or 1 }, 0.3)
+		if not shown then
+			task.delay(0.3, function()
+				if not (window.Visible and self.Visible) then
+					frame.Visible = false
+				end
+			end)
+		end
+	end
+
+	function panel:SetVisible(visible)
+		self.Visible = visible
+		self:_fade()
+	end
+
+	function panel:SetTitle(text)
+		title.Text = text
+	end
+
+	function panel:Destroy()
+		local list = window._panels or {}
+		local index = table.find(list, self)
+		if index then
+			table.remove(list, index)
+		end
+		frame:Destroy()
+	end
+
+	body.GroupTransparency = (window.Visible and panel.Visible) and 0 or 1
+	outlineStroke.Transparency = body.GroupTransparency
+	window._panels = window._panels or {}
+	table.insert(window._panels, panel)
+	return panel
 end
 
 function Window:Toggle()
